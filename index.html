@@ -72,6 +72,28 @@
   .seg button { border-radius: 0; padding: 6px 12px; }
   .seg button:first-child { border-radius: 10px 0 0 10px; }
   .seg button:last-child { border-radius: 0 10px 10px 0; border-left: 0; }
+  html, body { height: 100%; }
+  body { height: 100dvh; min-height: 0; overflow: hidden; }
+  #stage { min-height: 180px; flex: 1 1 0; }
+  #tabs { display: flex; gap: 6px; padding: 6px 16px 0; background: var(--panel); border-top: 1px solid var(--line); }
+  #tabs button { flex: 1; padding: 10px 4px; border-radius: 10px 10px 0 0; border-bottom: 0; background: transparent; color: var(--dim); }
+  #tabs button.on { background: var(--panel-2); color: var(--accent); }
+  #editor { min-height: 150px; align-content: start; background: var(--panel-2); }
+  #editor [data-t] { display: none; }
+  #editor[data-tab=pitch] [data-t=pitch], #editor[data-tab=ratio] [data-t=ratio],
+  #editor[data-tab=morph] [data-t=morph], #editor[data-tab=layer] [data-t=layer] { display: flex; }
+  #editor .row, .scroll button, .stepper button, .actions button, #modeSeg button { min-height: 44px; }
+  .scroll button { min-width: 44px; }
+  .stepper button { min-width: 44px; font-size: 18px; }
+  input[type=range] { height: 32px; }
+  .swipehint { display: none; }
+  #toast { position: fixed; left: 16px; right: 16px; top: 60px; z-index: 9; background: #3a1d1d; border: 1px solid #ff7d7d;
+    color: #ffd0d0; padding: 10px 12px; border-radius: 12px; text-align: center; }
+  #transport { padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); }
+  #transport .row { gap: 6px; }
+  #transport input[type=range] { height: 24px; }
+  #layers { padding: 8px 16px 6px; }
+  .chip { min-height: 48px; }
 </style>
 </head>
 <body>
@@ -83,24 +105,25 @@
 
   <div id="layers"></div>
 
-  <div id="editor">
-    <div class="row"><label>Note</label><div class="scroll" id="notes"></div></div>
-    <div class="row"><label>Octave</label>
-      <div class="stepper"><button id="octDn">−</button><b id="octVal">4</b><button id="octUp">+</button></div>
-      </div>
-    <div class="row"><label>Wave</label><div class="scroll" id="waves"></div></div>
-    <div class="row"><label>Ratio</label><div class="scroll" id="ratios"></div></div>
-    <div class="row"><label>Custom</label>
+  <div id="tabs"><button data-tab="pitch" class="on">Pitch</button><button data-tab="ratio">Ratio</button><button data-tab="morph">Morph</button><button data-tab="layer">Layer</button></div>
+  <div id="editor" data-tab="pitch">
+    <div class="row" data-t="pitch"><label>Note</label><div class="scroll" id="notes"></div></div>
+    <div class="row" data-t="pitch"><label>Octave</label>
+      <div class="stepper"><button id="octDn">−</button><b id="octVal">4</b><button id="octUp">+</button></div></div>
+    <div class="row" data-t="pitch"><label>Wave</label><div class="scroll" id="waves"></div></div>
+    <div class="row" data-t="ratio"><label>Ratio</label><div class="scroll" id="ratios"></div></div>
+    <div class="row" data-t="ratio"><label>Custom</label>
       <div class="stepper"><button id="nDn">−</button><b id="nVal">3</b><button id="nUp">+</button></div><b>:</b>
       <div class="stepper"><button id="dDn">−</button><b id="dVal">2</b><button id="dUp">+</button></div></div>
-    <div class="row"><label>Morph</label><button id="morph">LFO off</button>
+    <div class="row" data-t="ratio"><label>Phase</label><input type="range" id="phase" min="0" max="6.283" step="0.01"><span class="val" id="phaseV"></span></div>
+    <div class="row" data-t="morph"><label>Morph</label><button id="morph">LFO off</button>
       <div class="scroll" id="toRatios"></div></div>
-    <div class="row" id="morphRow"><label>Rate</label><input type="range" id="rate" min="0.03" max="3" step="0.01"><span class="val" id="rateV"></span></div>
-    <div class="row" id="depthRow"><label>Depth</label><input type="range" id="depth" min="0" max="1" step="0.01"><span class="val" id="depthV"></span></div>
-    <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01"><span class="val" id="volV"></span></div>
-    <div class="row"><label>Phase</label><input type="range" id="phase" min="0" max="6.283" step="0.01"><span class="val" id="phaseV"></span></div>
-    <div class="actions"><button id="mute">Mute</button><button id="dup">Duplicate</button><button id="del" class="danger">Delete</button></div>
+    <div class="row" data-t="morph" id="morphRow"><label>Rate</label><input type="range" id="rate" min="0.03" max="3" step="0.01"><span class="val" id="rateV"></span></div>
+    <div class="row" data-t="morph" id="depthRow"><label>Depth</label><input type="range" id="depth" min="0" max="1" step="0.01"><span class="val" id="depthV"></span></div>
+    <div class="row" data-t="layer"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01"><span class="val" id="volV"></span></div>
+    <div class="actions" data-t="layer"><button id="mute">Mute</button><button id="dup">Duplicate</button><button id="del" class="danger">Delete</button></div>
   </div>
+  <div id="toast" hidden></div>
 
   <div id="transport">
     <button id="play" aria-label="Play">▶</button>
@@ -156,11 +179,12 @@
 
   function initAudio() {
     if (ctx) return;
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} // iOS: ignore silent switch
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     const comp = ctx.createDynamicsCompressor();
     master = ctx.createGain();
     master.connect(comp); comp.connect(ctx.destination);
-    master.gain.value = state.master * 0.8;
+    master.gain.value = state.master;
     state.layers.forEach(buildNodes);
   }
   function buildNodes(l) {
@@ -189,7 +213,7 @@
     n.ox.frequency.setTargetAtTime(f, t, 0.01);
     n.oy.frequency.setTargetAtTime(f * ratioNow(l), t, l.morph ? 0.03 : 0.01);
     const audible = Math.max(1, state.layers.filter(x => !x.mute).length);
-    n.level.gain.setTargetAtTime(l.vol * 0.35 / Math.sqrt(audible), t, 0.02);
+    n.level.gain.setTargetAtTime(l.vol * 0.6 / Math.sqrt(audible), t, 0.02);
   }
   function applyGates() {
     if (!ctx) return;
@@ -199,7 +223,7 @@
       const on = state.playing && !l.mute && (state.mode === 'stack' || l.id === state.seqActive);
       n.gate.gain.setTargetAtTime(on ? 1 : 0, t, on ? 0.015 : 0.07);
     });
-    if (master) master.gain.setTargetAtTime(state.master * 0.8, t, 0.02);
+    if (master) master.gain.setTargetAtTime(state.master, t, 0.02);
   }
   const syncAll = () => state.layers.forEach(syncNodes);
   setInterval(() => { if (ctx) state.layers.forEach(l => { if (l.morph) syncNodes(l); }); }, 40);
@@ -296,6 +320,10 @@
     $('bpm').oninput = e => { state.bpm = +e.target.value; $('bpmV').textContent = state.bpm; if (seqTimer) restartSeq(); };
     $('drift').oninput = e => { state.drift = +e.target.value; };
     $('play').onclick = togglePlay;
+    document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+      $('editor').dataset.tab = b.dataset.tab;
+      document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+    });
     document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => {
       state.mode = b.dataset.mode;
       document.querySelectorAll('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
@@ -304,9 +332,9 @@
   }
   function edit(fn) {
     const l = cur(); if (!l) return;
-    fn(l); syncAll(); refresh();
+    fn(l); syncAll(); refresh(); blip(l.id);
   }
-  function select(id) { state.sel = id; refresh(); }
+  function select(id) { state.sel = id; refresh(); blip(id); }
   function addLayer(_, from) {
     const l = from
       ? newLayer({ note: from.note, oct: from.oct, n: from.n, d: from.d, wave: from.wave, vol: from.vol, phase: from.phase + 0.5, morph: from.morph, mn: from.mn, md: from.md, rate: from.rate, depth: from.depth })
@@ -321,9 +349,27 @@
     select(state.layers[Math.min(i, state.layers.length - 1)].id);
     syncAll(); if (state.mode === 'seq') restartSeq();
   }
-  function togglePlay() {
+  const toast = msg => { const t = $('toast'); t.textContent = msg; t.hidden = !msg; };
+  function unlock() {
     initAudio();
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state !== 'running') {
+      ctx.resume().then(() => { if (ctx.state === 'running') toast(''); }).catch(() => {});
+      setTimeout(() => { if (ctx.state !== 'running') toast('No sound? Check your phone is not on silent and media volume is up.'); }, 800);
+    }
+  }
+  ['pointerdown', 'touchend', 'keydown'].forEach(ev => window.addEventListener(ev, unlock, { passive: true }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); });
+  // short audition so every tap on a pitch/shape control is audible, even when stopped
+  let blipTimer = null;
+  function blip(id) {
+    if (!ctx || state.playing) return;
+    const n = nodes.get(id); if (!n) return;
+    n.gate.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
+    clearTimeout(blipTimer);
+    blipTimer = setTimeout(applyGates, 450);
+  }
+  function togglePlay() {
+    unlock();
     state.playing = !state.playing;
     $('play').classList.toggle('playing', state.playing);
     $('play').textContent = state.playing ? '■' : '▶';
