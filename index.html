@@ -55,7 +55,7 @@
   .scroll::-webkit-scrollbar { display: none; }
   .scroll button { padding: 6px 10px; flex: 0 0 auto; min-width: 38px; }
   input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
-  .val { flex: 0 0 38px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .val { flex: 0 0 52px; white-space: nowrap; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
   .stepper { display: flex; align-items: center; gap: 4px; }
   .stepper b { min-width: 22px; text-align: center; font-size: 16px; }
   .stepper button { padding: 4px 10px; }
@@ -118,7 +118,7 @@
     <div class="row" data-t="ratio"><label>Phase</label><input type="range" id="phase" min="0" max="6.283" step="0.01"><span class="val" id="phaseV"></span></div>
     <div class="row" data-t="morph"><label>Morph</label><button id="morph">LFO off</button>
       <div class="scroll" id="toRatios"></div></div>
-    <div class="row" data-t="morph" id="morphRow"><label>Rate</label><input type="range" id="rate" min="0.03" max="3" step="0.01"><span class="val" id="rateV"></span></div>
+    <div class="row" data-t="morph" id="morphRow"><label>Rate</label><input type="range" id="rate" min="0" max="1" step="0.001"><span class="val" id="rateV"></span></div>
     <div class="row" data-t="morph" id="depthRow"><label>Depth</label><input type="range" id="depth" min="0" max="1" step="0.01"><span class="val" id="depthV"></span></div>
     <div class="row" data-t="layer"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01"><span class="val" id="volV"></span></div>
     <div class="actions" data-t="layer"><button id="mute">Mute</button><button id="dup">Duplicate</button><button id="del" class="danger">Delete</button></div>
@@ -165,12 +165,15 @@
   const freq = l => 440 * Math.pow(2, (l.note - 9 + 12 * (l.oct - 4)) / 12);
   const clock = () => performance.now() / 1000;
   // current Y:X ratio; with morph on, an LFO glides it from n:d toward mn:md
-  const ratioNow = (l, time = clock()) => {
-    const a = l.n / l.d;
-    if (!l.morph) return a;
-    const k = l.depth * (0.5 - 0.5 * Math.cos(TAU * l.rate * time));
-    return a + (l.mn / l.md - a) * k;
-  };
+  // above FAST Hz the LFO is audio-rate (FM): too quick to see, so the figure shows a shimmering fan instead
+  const FAST = 6;
+  const visRate = l => Math.min(l.rate, l.rate > FAST ? 1.5 : FAST);
+  const ratioAt = (l, k) => { const a = l.n / l.d; return a + (l.mn / l.md - a) * l.depth * k; };
+  const ratioNow = (l, time = clock()) => !l.morph ? l.n / l.d : ratioAt(l, 0.5 - 0.5 * Math.cos(TAU * visRate(l) * time));
+  const rateText = r => r >= 1000 ? (r / 1000).toFixed(2) + 'kHz' : r >= 100 ? Math.round(r) + 'Hz' : r.toFixed(r < 1 ? 2 : 1) + 'Hz';
+  const RATE_MIN = 0.05, RATE_SPAN = 40000; // slider is logarithmic: 0.05 Hz .. 2 kHz
+  const sliderToRate = v => RATE_MIN * Math.pow(RATE_SPAN, v);
+  const rateToSlider = r => Math.log(r / RATE_MIN) / Math.log(RATE_SPAN);
   const midiName = f => { const m = Math.round(12 * Math.log2(f / 440) + 69); return NOTE_NAMES[((m % 12) + 12) % 12]; };
 
   // ---------- audio ----------
@@ -192,18 +195,20 @@
     const gate = ctx.createGain(); gate.gain.value = 0;
     const level = ctx.createGain();
     const ox = ctx.createOscillator(), oy = ctx.createOscillator();
+    const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+    lfo.connect(lfoGain); lfoGain.connect(oy.frequency); lfo.start(); // true audio-rate FM on the Y oscillator
     const px = ctx.createStereoPanner(), py = ctx.createStereoPanner();
     px.pan.value = -0.6; py.pan.value = 0.6; // X axis left, Y axis right, like a scope
     ox.connect(px); oy.connect(py); px.connect(level); py.connect(level);
     level.connect(gate); gate.connect(master);
     ox.start(); oy.start();
-    nodes.set(l.id, { ox, oy, gate, level });
+    nodes.set(l.id, { ox, oy, lfo, lfoGain, gate, level });
     syncNodes(l);
   }
   function destroyNodes(id) {
     const n = nodes.get(id); if (!n) return;
     n.gate.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
-    setTimeout(() => { try { n.ox.stop(); n.oy.stop(); n.gate.disconnect(); } catch (e) {} }, 200);
+    setTimeout(() => { try { n.ox.stop(); n.oy.stop(); n.lfo.stop(); n.gate.disconnect(); } catch (e) {} }, 200);
     nodes.delete(id);
   }
   function syncNodes(l) {
@@ -211,7 +216,10 @@
     const t = ctx.currentTime, f = freq(l);
     n.ox.type = n.oy.type = l.wave;
     n.ox.frequency.setTargetAtTime(f, t, 0.01);
-    n.oy.frequency.setTargetAtTime(f * ratioNow(l), t, l.morph ? 0.03 : 0.01);
+    const a = l.n / l.d, span = l.morph ? (l.mn / l.md - a) * l.depth : 0;
+    n.oy.frequency.setTargetAtTime(f * (a + span / 2), t, 0.01);   // centre of the sweep
+    n.lfo.frequency.setTargetAtTime(l.rate, t, 0.01);
+    n.lfoGain.gain.setTargetAtTime(f * span / 2, t, 0.01);          // sweep half-width in Hz
     const audible = Math.max(1, state.layers.filter(x => !x.mute).length);
     n.level.gain.setTargetAtTime(l.vol * 0.6 / Math.sqrt(audible), t, 0.02);
   }
@@ -226,7 +234,6 @@
     if (master) master.gain.setTargetAtTime(state.master, t, 0.02);
   }
   const syncAll = () => state.layers.forEach(syncNodes);
-  setInterval(() => { if (ctx) state.layers.forEach(l => { if (l.morph) syncNodes(l); }); }, 40);
 
   // ---------- sequencer ----------
   let seqTimer = null;
@@ -274,7 +281,7 @@
     document.querySelectorAll('#toRatios button').forEach(b => b.classList.toggle('on', l.morph && +b.dataset.n === l.mn && +b.dataset.d === l.md));
     $('morph').textContent = l.morph ? 'LFO on' : 'LFO off'; $('morph').classList.toggle('on', l.morph);
     ['morphRow', 'depthRow'].forEach(id => $(id).style.opacity = l.morph ? 1 : 0.4);
-    $('rate').value = l.rate; $('rateV').textContent = l.rate.toFixed(2) + 'Hz';
+    $('rate').value = rateToSlider(l.rate); $('rateV').textContent = rateText(l.rate);
     $('depth').value = l.depth; $('depthV').textContent = Math.round(l.depth * 100) + '%';
     $('octVal').textContent = l.oct; $('nVal').textContent = l.n; $('dVal').textContent = l.d;
     $('vol').value = l.vol; $('volV').textContent = Math.round(l.vol * 100);
@@ -302,7 +309,7 @@
       b.onclick = () => edit(l => { l.mn = n; l.md = d; l.morph = true; }); $('toRatios').appendChild(b);
     });
     $('morph').onclick = () => edit(l => l.morph = !l.morph);
-    $('rate').oninput = e => edit(l => l.rate = +e.target.value);
+    $('rate').oninput = e => edit(l => l.rate = sliderToRate(+e.target.value));
     $('depth').oninput = e => edit(l => l.depth = +e.target.value);
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
     $('octDn').onclick = () => edit(l => l.oct = clamp(l.oct - 1, 1, 6));
@@ -439,16 +446,19 @@
       const span = l.morph ? TAU * d : TAU;
 
       // full figure
-      g.beginPath();
+      const fan = l.morph && l.rate > FAST ? [0, 0.2, 0.4, 0.6, 0.8, 1].map(k => ratioAt(l, k)) : [rt];
       const N = 500;
-      for (let i = 0; i <= N; i++) {
-        const t = (i / N) * span;
-        i ? g.lineTo(px(X(t)), py(Y(t))) : g.moveTo(px(X(t)), py(Y(t)));
-      }
-      if (!l.morph) g.closePath();
-      g.shadowColor = l.color; g.shadowBlur = isSel ? 14 : 6;
-      g.strokeStyle = hexA(l.color, (isSel ? 0.55 : 0.28) * dim);
-      g.lineWidth = isSel ? 1.8 : 1.2; g.stroke();
+      fan.forEach(rk => {
+        g.beginPath();
+        for (let i = 0; i <= N; i++) {
+          const t = (i / N) * span, x = px(X(t)), y = py(l.morph ? f(rk * t) : Y(t));
+          i ? g.lineTo(x, y) : g.moveTo(x, y);
+        }
+        if (!l.morph) g.closePath();
+        g.shadowColor = l.color; g.shadowBlur = isSel ? 14 : 6;
+        g.strokeStyle = hexA(l.color, (isSel ? 0.55 : 0.28) * dim / Math.sqrt(fan.length));
+        g.lineWidth = isSel ? 1.8 : 1.2; g.stroke();
+      });
 
       // moving dot + bright trail
       const speed = 1.2 * (sounding ? 1 : 0.5);
