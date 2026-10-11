@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#07070a">
+<title>SynthWave</title>
+<style>
+  :root {
+    --bg: #07070a;
+    --panel: #111116;
+    --panel-2: #191920;
+    --line: #26262f;
+    --text: #f1ece6;
+    --dim: #8b8794;
+    --accent: #ffb27a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--bg); color: var(--text);
+    font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none; }
+  body { display: flex; min-height: 100vh; width: 100%; flex-direction: column; max-width: 560px; margin: 0 auto;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  button { font: inherit; color: inherit; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 12px; cursor: pointer; touch-action: manipulation; }
+  button:active { transform: scale(.97); }
+  button.on { border-color: var(--accent); color: var(--accent); background: #2a1d14; }
+
+  header { padding: 12px 16px 0; display: flex; align-items: baseline; justify-content: space-between; }
+  header h1 { margin: 0; font-size: 13px; letter-spacing: .28em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  #ratioLabel { text-align: center; padding: 6px 0 0; }
+  #ratioLabel small { display: block; letter-spacing: .3em; font-size: 10px; color: #e7c46a; }
+  #ratioLabel b { font-size: 34px; letter-spacing: .12em; font-weight: 600; }
+
+  #stage { position: relative; flex: 1 0 auto; min-height: 330px; touch-action: pan-y; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .swipehint { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--dim); pointer-events: none; }
+
+  #layers { display: flex; gap: 8px; overflow-x: auto; padding: 8px 16px; scrollbar-width: none; }
+  #layers::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--line); min-width: 84px; }
+  .chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  .chip span { display: block; font-weight: 600; }
+  .chip em { display: block; font-style: normal; font-size: 11px; color: var(--dim); }
+  .chip.sel { border-color: var(--c); background: #17171d; }
+  .chip.muted { opacity: .4; }
+  .chip.now { box-shadow: 0 0 14px -2px var(--c); }
+  #add { flex: 0 0 auto; width: 48px; font-size: 22px; padding: 0; border-style: dashed; color: var(--accent); }
+
+  #editor { background: var(--panel); border-top: 1px solid var(--line); padding: 10px 16px 12px; display: grid; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  #editor, #transport, .row > * { min-width: 0; }
+  .row > label { flex: 0 0 52px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+  .scroll { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1; padding: 1px; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .scroll button { padding: 6px 10px; flex: 0 0 auto; min-width: 38px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .val { flex: 0 0 38px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .stepper { display: flex; align-items: center; gap: 4px; }
+  .stepper b { min-width: 22px; text-align: center; font-size: 16px; }
+  .stepper button { padding: 4px 10px; }
+  .actions { display: flex; gap: 8px; }
+  .actions button { flex: 1; }
+  .danger { color: #ff7d7d; }
+
+  #transport { display: flex; align-items: center; gap: 10px; padding: 10px 16px 14px; background: #0c0c10; border-top: 1px solid var(--line); }
+  #play { width: 56px; height: 56px; border-radius: 50%; padding: 0; font-size: 22px; background: var(--accent); color: #1a0e05; border: 0; flex: 0 0 auto; }
+  #play.playing { background: #ff6a6a; }
+  #transport .col { flex: 1; display: grid; gap: 6px; min-width: 0; }
+  #transport .row > label { flex-basis: 44px; }
+  .seg { display: flex; }
+  .seg button { border-radius: 0; padding: 6px 12px; }
+  .seg button:first-child { border-radius: 10px 0 0 10px; }
+  .seg button:last-child { border-radius: 0 10px 10px 0; border-left: 0; }
+</style>
+</head>
+<body>
+  <header><h1>SynthWave</h1><div class="seg" id="modeSeg">
+    <button data-mode="stack" class="on">Stack</button><button data-mode="seq">Sequence</button></div></header>
+  <div id="ratioLabel"><small>A RATIO OF</small><b id="ratioText">3 : 2</b></div>
+
+  <div id="stage"><canvas id="cv"></canvas><div class="swipehint">swipe to move between layers</div></div>
+
+  <div id="layers"></div>
+
+  <div id="editor">
+    <div class="row"><label>Note</label><div class="scroll" id="notes"></div></div>
+    <div class="row"><label>Octave</label>
+      <div class="stepper"><button id="octDn">−</button><b id="octVal">4</b><button id="octUp">+</button></div>
+      </div>
+    <div class="row"><label>Wave</label><div class="scroll" id="waves"></div></div>
+    <div class="row"><label>Ratio</label><div class="scroll" id="ratios"></div></div>
+    <div class="row"><label>Custom</label>
+      <div class="stepper"><button id="nDn">−</button><b id="nVal">3</b><button id="nUp">+</button></div><b>:</b>
+      <div class="stepper"><button id="dDn">−</button><b id="dVal">2</b><button id="dUp">+</button></div></div>
+    <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01"><span class="val" id="volV"></span></div>
+    <div class="row"><label>Phase</label><input type="range" id="phase" min="0" max="6.283" step="0.01"><span class="val" id="phaseV"></span></div>
+    <div class="actions"><button id="mute">Mute</button><button id="dup">Duplicate</button><button id="del" class="danger">Delete</button></div>
+  </div>
+
+  <div id="transport">
+    <button id="play" aria-label="Play">▶</button>
+    <div class="col">
+      <div class="row"><label>Volume</label><input type="range" id="master" min="0" max="1" step="0.01" value="0.7"></div>
+      <div class="row"><label>Tempo</label><input type="range" id="bpm" min="40" max="240" step="1" value="100"><span class="val" id="bpmV">100</span></div>
+      <div class="row"><label>Drift</label><input type="range" id="drift" min="0" max="1" step="0.01" value="0.25"></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+  const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const COLORS = ['#ffa069', '#ff6fa3', '#ffd166', '#6fe3c1', '#7aa7ff', '#c08cff', '#8be15f'];
+  const WAVES = [['sine','Sine'],['triangle','Tri'],['sawtooth','Saw'],['square','Sqr']];
+  const RATIOS = [[1,1],[2,1],[3,2],[4,3],[5,4],[5,3],[6,5],[8,5],[9,8],[7,4],[3,1]];
+
+  const $ = id => document.getElementById(id);
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const TAU = Math.PI * 2;
+
+  // ---------- state ----------
+  let uid = 0;
+  const state = {
+    layers: [], sel: null, playing: false, mode: 'stack',
+    bpm: 100, master: 0.7, drift: 0.25, seqActive: null, seqIdx: 0,
+  };
+  function newLayer(o = {}) {
+    const i = state.layers.length;
+    return Object.assign({
+      id: ++uid, color: COLORS[i % COLORS.length], note: 0, oct: 4, n: 3, d: 2,
+      wave: 'sine', vol: 0.8, phase: 0, mute: false,
+    }, o);
+  }
+  const byId = id => state.layers.find(l => l.id === id);
+  const cur = () => byId(state.sel);
+  const freq = l => 440 * Math.pow(2, (l.note - 9 + 12 * (l.oct - 4)) / 12);
+  const midiName = f => { const m = Math.round(12 * Math.log2(f / 440) + 69); return NOTE_NAMES[((m % 12) + 12) % 12]; };
+
+  // ---------- audio ----------
+  let ctx = null, master = null;
+  const nodes = new Map(); // layer id -> {ox, oy, gate, level}
+
+  function initAudio() {
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ctx.createDynamicsCompressor();
+    master = ctx.createGain();
+    master.connect(comp); comp.connect(ctx.destination);
+    master.gain.value = state.master * 0.8;
+    state.layers.forEach(buildNodes);
+  }
+  function buildNodes(l) {
+    if (!ctx || nodes.has(l.id)) return;
+    const gate = ctx.createGain(); gate.gain.value = 0;
+    const level = ctx.createGain();
+    const ox = ctx.createOscillator(), oy = ctx.createOscillator();
+    const px = ctx.createStereoPanner(), py = ctx.createStereoPanner();
+    px.pan.value = -0.6; py.pan.value = 0.6; // X axis left, Y axis right, like a scope
+    ox.connect(px); oy.connect(py); px.connect(level); py.connect(level);
+    level.connect(gate); gate.connect(master);
+    ox.start(); oy.start();
+    nodes.set(l.id, { ox, oy, gate, level });
+    syncNodes(l);
+  }
+  function destroyNodes(id) {
+    const n = nodes.get(id); if (!n) return;
+    n.gate.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
+    setTimeout(() => { try { n.ox.stop(); n.oy.stop(); n.gate.disconnect(); } catch (e) {} }, 200);
+    nodes.delete(id);
+  }
+  function syncNodes(l) {
+    const n = nodes.get(l.id); if (!n) return;
+    const t = ctx.currentTime, f = freq(l);
+    n.ox.type = n.oy.type = l.wave;
+    n.ox.frequency.setTargetAtTime(f, t, 0.01);
+    n.oy.frequency.setTargetAtTime(f * l.n / l.d, t, 0.01);
+    const audible = Math.max(1, state.layers.filter(x => !x.mute).length);
+    n.level.gain.setTargetAtTime(l.vol * 0.35 / Math.sqrt(audible), t, 0.02);
+  }
+  function applyGates() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    state.layers.forEach(l => {
+      const n = nodes.get(l.id); if (!n) return;
+      const on = state.playing && !l.mute && (state.mode === 'stack' || l.id === state.seqActive);
+      n.gate.gain.setTargetAtTime(on ? 1 : 0, t, on ? 0.015 : 0.07);
+    });
+    if (master) master.gain.setTargetAtTime(state.master * 0.8, t, 0.02);
+  }
+  const syncAll = () => state.layers.forEach(syncNodes);
+
+  // ---------- sequencer ----------
+  let seqTimer = null;
+  function seqTick() {
+    const list = state.layers.filter(l => !l.mute);
+    if (!list.length) { state.seqActive = null; applyGates(); return; }
+    const l = list[state.seqIdx % list.length];
+    state.seqIdx++;
+    state.seqActive = l.id;
+    applyGates(); renderChips();
+  }
+  function restartSeq() {
+    clearInterval(seqTimer); seqTimer = null;
+    if (state.playing && state.mode === 'seq') {
+      state.seqIdx = Math.max(0, state.layers.filter(l => !l.mute).findIndex(l => l.id === state.sel));
+      seqTick();
+      seqTimer = setInterval(seqTick, 60000 / state.bpm);
+    } else { state.seqActive = null; }
+    applyGates(); renderChips();
+  }
+
+  // ---------- UI ----------
+  function renderChips() {
+    const box = $('layers'); box.innerHTML = '';
+    state.layers.forEach(l => {
+      const b = document.createElement('button');
+      b.className = 'chip' + (l.id === state.sel ? ' sel' : '') + (l.mute ? ' muted' : '') +
+        (state.mode === 'seq' && l.id === state.seqActive ? ' now' : '');
+      b.style.setProperty('--c', l.color);
+      const g = gcd(l.n, l.d);
+      b.innerHTML = `<i></i><div><span>${NOTE_NAMES[l.note]}${l.oct}</span><em>${l.n / g}:${l.d / g} · ${l.wave.slice(0, 3)}</em></div>`;
+      b.onclick = () => select(l.id);
+      box.appendChild(b);
+    });
+    const add = document.createElement('button');
+    add.id = 'add'; add.textContent = '+'; add.setAttribute('aria-label', 'Add layer');
+    add.onclick = addLayer; box.appendChild(add);
+    const s = box.querySelector('.sel'); if (s) s.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }
+  function renderEditor() {
+    const l = cur(); if (!l) return;
+    document.querySelectorAll('#notes button').forEach((b, i) => b.classList.toggle('on', i === l.note));
+    document.querySelectorAll('#waves button').forEach(b => b.classList.toggle('on', b.dataset.w === l.wave));
+    document.querySelectorAll('#ratios button').forEach(b => b.classList.toggle('on', +b.dataset.n === l.n / gcd(l.n, l.d) && +b.dataset.d === l.d / gcd(l.n, l.d)));
+    $('octVal').textContent = l.oct; $('nVal').textContent = l.n; $('dVal').textContent = l.d;
+    $('vol').value = l.vol; $('volV').textContent = Math.round(l.vol * 100);
+    $('phase').value = l.phase; $('phaseV').textContent = Math.round(l.phase / TAU * 360) + '°';
+    $('mute').textContent = l.mute ? 'Unmute' : 'Mute'; $('mute').classList.toggle('on', l.mute);
+    const g = gcd(l.n, l.d); $('ratioText').textContent = `${l.n / g} : ${l.d / g}`;
+  }
+  function refresh() { renderChips(); renderEditor(); }
+
+  function buildStaticControls() {
+    NOTE_NAMES.forEach((n, i) => {
+      const b = document.createElement('button'); b.textContent = n;
+      b.onclick = () => edit(l => l.note = i); $('notes').appendChild(b);
+    });
+    WAVES.forEach(([w, label]) => {
+      const b = document.createElement('button'); b.textContent = label; b.dataset.w = w;
+      b.onclick = () => edit(l => l.wave = w); $('waves').appendChild(b);
+    });
+    RATIOS.forEach(([n, d]) => {
+      const b = document.createElement('button'); b.textContent = `${n}:${d}`; b.dataset.n = n; b.dataset.d = d;
+      b.onclick = () => edit(l => { l.n = n; l.d = d; }); $('ratios').appendChild(b);
+    });
+    const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+    $('octDn').onclick = () => edit(l => l.oct = clamp(l.oct - 1, 1, 6));
+    $('octUp').onclick = () => edit(l => l.oct = clamp(l.oct + 1, 1, 6));
+    $('nDn').onclick = () => edit(l => l.n = clamp(l.n - 1, 1, 16));
+    $('nUp').onclick = () => edit(l => l.n = clamp(l.n + 1, 1, 16));
+    $('dDn').onclick = () => edit(l => l.d = clamp(l.d - 1, 1, 16));
+    $('dUp').onclick = () => edit(l => l.d = clamp(l.d + 1, 1, 16));
+    $('vol').oninput = e => edit(l => l.vol = +e.target.value);
+    $('phase').oninput = e => edit(l => l.phase = +e.target.value);
+    $('mute').onclick = () => { edit(l => l.mute = !l.mute); syncAll(); applyGates(); if (state.mode === 'seq') restartSeq(); };
+    $('dup').onclick = () => addLayer(null, cur());
+    $('del').onclick = removeLayer;
+    $('master').oninput = e => { state.master = +e.target.value; applyGates(); };
+    $('bpm').oninput = e => { state.bpm = +e.target.value; $('bpmV').textContent = state.bpm; if (seqTimer) restartSeq(); };
+    $('drift').oninput = e => { state.drift = +e.target.value; };
+    $('play').onclick = togglePlay;
+    document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => {
+      state.mode = b.dataset.mode;
+      document.querySelectorAll('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
+      restartSeq();
+    });
+  }
+  function edit(fn) {
+    const l = cur(); if (!l) return;
+    fn(l); syncAll(); refresh();
+  }
+  function select(id) { state.sel = id; refresh(); }
+  function addLayer(_, from) {
+    const l = from
+      ? newLayer({ note: from.note, oct: from.oct, n: from.n, d: from.d, wave: from.wave, vol: from.vol, phase: from.phase + 0.5 })
+      : newLayer({ note: [0, 4, 7, 9, 2, 5, 11][state.layers.length % 7], n: RATIOS[(state.layers.length * 3) % RATIOS.length][0], d: RATIOS[(state.layers.length * 3) % RATIOS.length][1] });
+    state.layers.push(l); buildNodes(l); syncAll(); select(l.id); applyGates();
+  }
+  function removeLayer() {
+    if (state.layers.length <= 1) return;
+    const i = state.layers.findIndex(l => l.id === state.sel);
+    destroyNodes(state.sel);
+    state.layers.splice(i, 1);
+    select(state.layers[Math.min(i, state.layers.length - 1)].id);
+    syncAll(); if (state.mode === 'seq') restartSeq();
+  }
+  function togglePlay() {
+    initAudio();
+    if (ctx.state === 'suspended') ctx.resume();
+    state.playing = !state.playing;
+    $('play').classList.toggle('playing', state.playing);
+    $('play').textContent = state.playing ? '■' : '▶';
+    syncAll(); restartSeq();
+  }
+
+  // swipe on stage to move between layers
+  (() => {
+    const st = $('stage'); let x0 = null;
+    st.addEventListener('pointerdown', e => { x0 = e.clientX; });
+    st.addEventListener('pointerup', e => {
+      if (x0 === null) return;
+      const dx = e.clientX - x0; x0 = null;
+      if (Math.abs(dx) < 40) return;
+      const i = state.layers.findIndex(l => l.id === state.sel);
+      const j = (i + (dx < 0 ? 1 : -1) + state.layers.length) % state.layers.length;
+      select(state.layers[j].id);
+    });
+  })();
+
+  // ---------- visuals ----------
+  const cv = $('cv'), g = cv.getContext('2d');
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const r = cv.getBoundingClientRect();
+    W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  new ResizeObserver(resize).observe($('stage'));
+
+  const wave = {
+    sine: x => Math.sin(x),
+    triangle: x => (2 / Math.PI) * Math.asin(Math.sin(x)),
+    sawtooth: x => { const p = (x / TAU) % 1; return 2 * (p < 0 ? p + 1 : p) - 1; },
+    square: x => Math.tanh(5 * Math.sin(x)),
+  };
+  const hexA = (hex, a) => {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  };
+
+  let t0 = performance.now();
+  function frame(now) {
+    const time = (now - t0) / 1000;
+    g.clearRect(0, 0, W, H);
+    const size = Math.min(W - 70, H - 40), cx = W / 2, cy = H / 2, r = size / 2;
+    const px = x => cx + x * r * 0.92, py = y => cy - y * r * 0.92;
+
+    // frame rails
+    g.lineWidth = 1;
+    g.strokeStyle = 'rgba(255,255,255,0.06)';
+    g.strokeRect(cx - r, cy - r, size, size);
+
+    g.globalCompositeOperation = 'lighter';
+    state.layers.forEach(l => {
+      const gg = gcd(l.n, l.d), n = l.n / gg, d = l.d / gg;
+      const f = wave[l.wave];
+      const isSel = l.id === state.sel;
+      const sounding = state.playing && !l.mute && (state.mode === 'stack' || l.id === state.seqActive);
+      const dim = l.mute ? 0.12 : sounding ? 1 : 0.5;
+      const ph = l.phase + state.drift * time * 0.35;
+      const X = t => f(d * t + ph), Y = t => f(n * t);
+
+      // full figure
+      g.beginPath();
+      const N = 500;
+      for (let i = 0; i <= N; i++) {
+        const t = (i / N) * TAU;
+        i ? g.lineTo(px(X(t)), py(Y(t))) : g.moveTo(px(X(t)), py(Y(t)));
+      }
+      g.closePath();
+      g.shadowColor = l.color; g.shadowBlur = isSel ? 14 : 6;
+      g.strokeStyle = hexA(l.color, (isSel ? 0.55 : 0.28) * dim);
+      g.lineWidth = isSel ? 1.8 : 1.2; g.stroke();
+
+      // moving dot + bright trail
+      const speed = 1.2 * (sounding ? 1 : 0.5);
+      const t = time * speed;
+      g.beginPath();
+      for (let i = 0; i <= 40; i++) {
+        const tt = t - (40 - i) * 0.012 * 3;
+        i ? g.lineTo(px(X(tt)), py(Y(tt))) : g.moveTo(px(X(tt)), py(Y(tt)));
+      }
+      g.strokeStyle = hexA(l.color, 0.95 * dim); g.lineWidth = isSel ? 3 : 2; g.stroke();
+      const dx = px(X(t)), dy = py(Y(t));
+
+      if (isSel) {
+        // rails with axis dots, like the reel
+        const f0 = freq(l), f1 = f0 * l.n / l.d;
+        g.shadowBlur = 0;
+        g.setLineDash([3, 4]); g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(dx, cy - r); g.lineTo(dx, dy); g.moveTo(cx - r, dy); g.lineTo(dx, dy); g.stroke();
+        g.setLineDash([]);
+        g.strokeStyle = hexA(l.color, 0.35);
+        g.beginPath(); g.moveTo(cx - r, cy - r - 14); g.lineTo(cx + r, cy - r - 14);
+        g.moveTo(cx - r - 14, cy - r); g.lineTo(cx - r - 14, cy + r); g.stroke();
+        g.shadowColor = l.color; g.shadowBlur = 16; g.fillStyle = '#fff';
+        g.beginPath(); g.arc(dx, cy - r - 14, 5, 0, TAU); g.fill();
+        g.beginPath(); g.arc(cx - r - 14, dy, 5, 0, TAU); g.fill();
+        g.shadowBlur = 0; g.globalCompositeOperation = 'source-over';
+        g.fillStyle = l.color; g.font = '600 13px system-ui'; g.textAlign = 'center';
+        g.fillText(midiName(f0), cx + r, cy - r - 24);
+        g.fillText(midiName(f1), cx - r - 14, cy + r + 18);
+        g.globalCompositeOperation = 'lighter';
+      }
+      g.shadowColor = '#fff'; g.shadowBlur = 14; g.fillStyle = '#fff';
+      g.beginPath(); g.arc(dx, dy, isSel ? 4.5 : 3, 0, TAU); g.fill();
+      g.shadowBlur = 0;
+    });
+    g.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- boot ----------
+  buildStaticControls();
+  const first = newLayer(); state.layers.push(first); state.sel = first.id;
+  addLayer(); select(first.id);
+  resize(); refresh();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
