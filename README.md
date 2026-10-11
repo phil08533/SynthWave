@@ -6,4 +6,5 @@ Open `index.html` in a browser (works on phones). Press play.
 
 - **Layers**: `+` adds one, tap a chip or swipe the figure to move between them. Each layer has its own note, octave, ratio, waveform, volume and phase.
 - **Stack** plays every layer at once. **Sequence** steps through the layers at the chosen tempo.
+- **Morph (LFO)**: glides a layer's ratio back and forth between its ratio and a second one, in sound and shape. Set the target ratio, rate and depth.
 - **Drift** slowly rotates the shapes.

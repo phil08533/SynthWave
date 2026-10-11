@@ -93,6 +93,10 @@
     <div class="row"><label>Custom</label>
       <div class="stepper"><button id="nDn">−</button><b id="nVal">3</b><button id="nUp">+</button></div><b>:</b>
       <div class="stepper"><button id="dDn">−</button><b id="dVal">2</b><button id="dUp">+</button></div></div>
+    <div class="row"><label>Morph</label><button id="morph">LFO off</button>
+      <div class="scroll" id="toRatios"></div></div>
+    <div class="row" id="morphRow"><label>Rate</label><input type="range" id="rate" min="0.03" max="3" step="0.01"><span class="val" id="rateV"></span></div>
+    <div class="row" id="depthRow"><label>Depth</label><input type="range" id="depth" min="0" max="1" step="0.01"><span class="val" id="depthV"></span></div>
     <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01"><span class="val" id="volV"></span></div>
     <div class="row"><label>Phase</label><input type="range" id="phase" min="0" max="6.283" step="0.01"><span class="val" id="phaseV"></span></div>
     <div class="actions"><button id="mute">Mute</button><button id="dup">Duplicate</button><button id="del" class="danger">Delete</button></div>
@@ -130,11 +134,20 @@
     return Object.assign({
       id: ++uid, color: COLORS[i % COLORS.length], note: 0, oct: 4, n: 3, d: 2,
       wave: 'sine', vol: 0.8, phase: 0, mute: false,
+      morph: false, mn: 5, md: 4, rate: 0.25, depth: 1,
     }, o);
   }
   const byId = id => state.layers.find(l => l.id === id);
   const cur = () => byId(state.sel);
   const freq = l => 440 * Math.pow(2, (l.note - 9 + 12 * (l.oct - 4)) / 12);
+  const clock = () => performance.now() / 1000;
+  // current Y:X ratio; with morph on, an LFO glides it from n:d toward mn:md
+  const ratioNow = (l, time = clock()) => {
+    const a = l.n / l.d;
+    if (!l.morph) return a;
+    const k = l.depth * (0.5 - 0.5 * Math.cos(TAU * l.rate * time));
+    return a + (l.mn / l.md - a) * k;
+  };
   const midiName = f => { const m = Math.round(12 * Math.log2(f / 440) + 69); return NOTE_NAMES[((m % 12) + 12) % 12]; };
 
   // ---------- audio ----------
@@ -174,7 +187,7 @@
     const t = ctx.currentTime, f = freq(l);
     n.ox.type = n.oy.type = l.wave;
     n.ox.frequency.setTargetAtTime(f, t, 0.01);
-    n.oy.frequency.setTargetAtTime(f * l.n / l.d, t, 0.01);
+    n.oy.frequency.setTargetAtTime(f * ratioNow(l), t, l.morph ? 0.03 : 0.01);
     const audible = Math.max(1, state.layers.filter(x => !x.mute).length);
     n.level.gain.setTargetAtTime(l.vol * 0.35 / Math.sqrt(audible), t, 0.02);
   }
@@ -189,6 +202,7 @@
     if (master) master.gain.setTargetAtTime(state.master * 0.8, t, 0.02);
   }
   const syncAll = () => state.layers.forEach(syncNodes);
+  setInterval(() => { if (ctx) state.layers.forEach(l => { if (l.morph) syncNodes(l); }); }, 40);
 
   // ---------- sequencer ----------
   let seqTimer = null;
@@ -233,6 +247,11 @@
     document.querySelectorAll('#notes button').forEach((b, i) => b.classList.toggle('on', i === l.note));
     document.querySelectorAll('#waves button').forEach(b => b.classList.toggle('on', b.dataset.w === l.wave));
     document.querySelectorAll('#ratios button').forEach(b => b.classList.toggle('on', +b.dataset.n === l.n / gcd(l.n, l.d) && +b.dataset.d === l.d / gcd(l.n, l.d)));
+    document.querySelectorAll('#toRatios button').forEach(b => b.classList.toggle('on', l.morph && +b.dataset.n === l.mn && +b.dataset.d === l.md));
+    $('morph').textContent = l.morph ? 'LFO on' : 'LFO off'; $('morph').classList.toggle('on', l.morph);
+    ['morphRow', 'depthRow'].forEach(id => $(id).style.opacity = l.morph ? 1 : 0.4);
+    $('rate').value = l.rate; $('rateV').textContent = l.rate.toFixed(2) + 'Hz';
+    $('depth').value = l.depth; $('depthV').textContent = Math.round(l.depth * 100) + '%';
     $('octVal').textContent = l.oct; $('nVal').textContent = l.n; $('dVal').textContent = l.d;
     $('vol').value = l.vol; $('volV').textContent = Math.round(l.vol * 100);
     $('phase').value = l.phase; $('phaseV').textContent = Math.round(l.phase / TAU * 360) + '°';
@@ -254,6 +273,13 @@
       const b = document.createElement('button'); b.textContent = `${n}:${d}`; b.dataset.n = n; b.dataset.d = d;
       b.onclick = () => edit(l => { l.n = n; l.d = d; }); $('ratios').appendChild(b);
     });
+    RATIOS.forEach(([n, d]) => {
+      const b = document.createElement('button'); b.textContent = `${n}:${d}`; b.dataset.n = n; b.dataset.d = d;
+      b.onclick = () => edit(l => { l.mn = n; l.md = d; l.morph = true; }); $('toRatios').appendChild(b);
+    });
+    $('morph').onclick = () => edit(l => l.morph = !l.morph);
+    $('rate').oninput = e => edit(l => l.rate = +e.target.value);
+    $('depth').oninput = e => edit(l => l.depth = +e.target.value);
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
     $('octDn').onclick = () => edit(l => l.oct = clamp(l.oct - 1, 1, 6));
     $('octUp').onclick = () => edit(l => l.oct = clamp(l.oct + 1, 1, 6));
@@ -283,7 +309,7 @@
   function select(id) { state.sel = id; refresh(); }
   function addLayer(_, from) {
     const l = from
-      ? newLayer({ note: from.note, oct: from.oct, n: from.n, d: from.d, wave: from.wave, vol: from.vol, phase: from.phase + 0.5 })
+      ? newLayer({ note: from.note, oct: from.oct, n: from.n, d: from.d, wave: from.wave, vol: from.vol, phase: from.phase + 0.5, morph: from.morph, mn: from.mn, md: from.md, rate: from.rate, depth: from.depth })
       : newLayer({ note: [0, 4, 7, 9, 2, 5, 11][state.layers.length % 7], n: RATIOS[(state.layers.length * 3) % RATIOS.length][0], d: RATIOS[(state.layers.length * 3) % RATIOS.length][1] });
     state.layers.push(l); buildNodes(l); syncAll(); select(l.id); applyGates();
   }
@@ -361,16 +387,19 @@
       const sounding = state.playing && !l.mute && (state.mode === 'stack' || l.id === state.seqActive);
       const dim = l.mute ? 0.12 : sounding ? 1 : 0.5;
       const ph = l.phase + state.drift * time * 0.35;
-      const X = t => f(d * t + ph), Y = t => f(n * t);
+      const rt = ratioNow(l);
+      const X = l.morph ? (t => f(t + ph)) : (t => f(d * t + ph));
+      const Y = l.morph ? (t => f(rt * t)) : (t => f(n * t));
+      const span = l.morph ? TAU * d : TAU;
 
       // full figure
       g.beginPath();
       const N = 500;
       for (let i = 0; i <= N; i++) {
-        const t = (i / N) * TAU;
+        const t = (i / N) * span;
         i ? g.lineTo(px(X(t)), py(Y(t))) : g.moveTo(px(X(t)), py(Y(t)));
       }
-      g.closePath();
+      if (!l.morph) g.closePath();
       g.shadowColor = l.color; g.shadowBlur = isSel ? 14 : 6;
       g.strokeStyle = hexA(l.color, (isSel ? 0.55 : 0.28) * dim);
       g.lineWidth = isSel ? 1.8 : 1.2; g.stroke();
@@ -388,7 +417,8 @@
 
       if (isSel) {
         // rails with axis dots, like the reel
-        const f0 = freq(l), f1 = f0 * l.n / l.d;
+        const f0 = freq(l), f1 = f0 * rt;
+        if (l.morph) $('ratioText').textContent = `${rt.toFixed(2)} : 1`;
         g.shadowBlur = 0;
         g.setLineDash([3, 4]); g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1;
         g.beginPath(); g.moveTo(dx, cy - r); g.lineTo(dx, dy); g.moveTo(cx - r, dy); g.lineTo(dx, dy); g.stroke();
