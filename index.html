@@ -74,7 +74,7 @@
   .seg button:last-child { border-radius: 0 10px 10px 0; border-left: 0; }
   html, body { height: 100%; }
   body { height: 100dvh; min-height: 0; overflow: hidden; }
-  #stage { min-height: 180px; flex: 1 1 0; }
+  #stage { min-height: 110px; flex: 1 1 0; }
   #tabs { display: flex; gap: 6px; padding: 6px 16px 0; background: var(--panel); border-top: 1px solid var(--line); }
   #tabs button { flex: 1; padding: 10px 4px; border-radius: 10px 10px 0 0; border-bottom: 0; background: transparent; color: var(--dim); }
   #tabs button.on { background: var(--panel-2); color: var(--accent); }
@@ -94,18 +94,21 @@
   #transport input[type=range] { height: 24px; }
   #layers { padding: 8px 16px 6px; }
   .chip { min-height: 48px; }
+  #editor[data-tab=seq] [data-t=seq] { display: flex; }
+  #seqbar button { flex: 1; padding: 6px 4px; }
+  #grid { position: static; width: 100%; height: 140px; touch-action: none; border-radius: 10px; background: #0d0d11; }
 </style>
 </head>
 <body>
   <header><h1>SynthWave</h1><div class="seg" id="modeSeg">
-    <button data-mode="stack" class="on">Stack</button><button data-mode="seq">Sequence</button></div></header>
+    <button data-mode="stack" class="on">Stack</button><button data-mode="seq">Cycle</button><button data-mode="pattern">Pattern</button></div></header>
   <div id="ratioLabel"><small>A RATIO OF</small><b id="ratioText">3 : 2</b></div>
 
   <div id="stage"><canvas id="cv"></canvas><div class="swipehint">swipe to move between layers</div></div>
 
   <div id="layers"></div>
 
-  <div id="tabs"><button data-tab="pitch" class="on">Pitch</button><button data-tab="ratio">Ratio</button><button data-tab="morph">Morph</button><button data-tab="layer">Layer</button></div>
+  <div id="tabs"><button data-tab="pitch" class="on">Pitch</button><button data-tab="ratio">Ratio</button><button data-tab="morph">Morph</button><button data-tab="layer">Layer</button><button data-tab="seq">Seq</button></div>
   <div id="editor" data-tab="pitch">
     <div class="row" data-t="pitch"><label>Note</label><div class="scroll" id="notes"></div></div>
     <div class="row" data-t="pitch"><label>Octave</label>
@@ -121,6 +124,8 @@
     <div class="row" data-t="morph" id="morphRow"><label>Rate</label><input type="range" id="rate" min="0" max="1" step="0.001"><span class="val" id="rateV"></span></div>
     <div class="row" data-t="morph" id="depthRow"><label>Depth</label><input type="range" id="depth" min="0" max="1" step="0.01"><span class="val" id="depthV"></span></div>
     <div class="row" data-t="layer"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01"><span class="val" id="volV"></span></div>
+    <div class="row" data-t="seq" id="seqbar"><button id="scaleBtn">Major</button><button id="lenBtn">16 steps</button><button id="rand">Random</button><button id="clr">Clear</button></div>
+    <div class="row" data-t="seq"><canvas id="grid"></canvas></div>
     <div class="actions" data-t="layer"><button id="mute">Mute</button><button id="dup">Duplicate</button><button id="del" class="danger">Delete</button></div>
   </div>
   <div id="toast" hidden></div>
@@ -150,19 +155,24 @@
   let uid = 0;
   const state = {
     layers: [], sel: null, playing: false, mode: 'stack',
-    bpm: 100, master: 0.7, drift: 0.25, seqActive: null, seqIdx: 0,
+    bpm: 100, master: 0.7, scale: 0, patLen: 16, drift: 0.25, seqActive: null, seqIdx: 0,
   };
   function newLayer(o = {}) {
     const i = state.layers.length;
     return Object.assign({
       id: ++uid, color: COLORS[i % COLORS.length], note: 0, oct: 4, n: 3, d: 2,
       wave: 'sine', vol: 0.8, phase: 0, mute: false,
-      morph: false, mn: 5, md: 4, rate: 0.25, depth: 1,
+      morph: false, mn: 5, md: 4, rate: 0.25, depth: 1, pat: Array(16).fill(null), pm: 1,
     }, o);
   }
   const byId = id => state.layers.find(l => l.id === id);
   const cur = () => byId(state.sel);
-  const freq = l => 440 * Math.pow(2, (l.note - 9 + 12 * (l.oct - 4)) / 12);
+  // l.pm is the sequencer's pitch multiplier for the step that is sounding
+  const freq = l => 440 * Math.pow(2, (l.note - 9 + 12 * (l.oct - 4)) / 12) * (l.pm || 1);
+  const SCALES = [['Major', [0,2,4,5,7,9,11,12]], ['Minor', [0,2,3,5,7,8,10,12]], ['Pentatonic', [0,2,4,7,9,12,14,16]],
+                  ['Blues', [0,3,5,6,7,10,12,15]], ['Chromatic', [0,1,2,3,4,5,6,7]]];
+  const ROWS = 8;
+  const stepMul = row => Math.pow(2, SCALES[state.scale][1][row] / 12);
   const clock = () => performance.now() / 1000;
   // current Y:X ratio; with morph on, an LFO glides it from n:d toward mn:md
   // above FAST Hz the LFO is audio-rate (FM): too quick to see, so the figure shows a shimmering fan instead
@@ -226,6 +236,7 @@
   function applyGates() {
     if (!ctx) return;
     const t = ctx.currentTime;
+    if (state.mode === 'pattern' && state.playing) { master.gain.setTargetAtTime(state.master, t, 0.02); return; } // the scheduler owns the gates
     state.layers.forEach(l => {
       const n = nodes.get(l.id); if (!n) return;
       const on = state.playing && !l.mute && (state.mode === 'stack' || l.id === state.seqActive);
@@ -234,6 +245,42 @@
     if (master) master.gain.setTargetAtTime(state.master, t, 0.02);
   }
   const syncAll = () => state.layers.forEach(syncNodes);
+
+  // ---------- melody pattern scheduler (look-ahead, sample-accurate timing) ----------
+  const pat = { timer: null, next: 0, step: 0, log: [] };
+  function patSchedule(step, t, dur) {
+    state.layers.forEach(l => {
+      const n = nodes.get(l.id), row = l.pat[step];
+      if (!n || l.mute || row == null) return;
+      l.pm = stepMul(row);
+      const f = freq(l), a = l.n / l.d, span = l.morph ? (l.mn / l.md - a) * l.depth : 0;
+      n.ox.frequency.setValueAtTime(f, t);
+      n.oy.frequency.setValueAtTime(f * (a + span / 2), t);
+      n.lfoGain.gain.setValueAtTime(f * span / 2, t);
+      const g = n.gate.gain;
+      g.cancelScheduledValues(t);
+      g.setTargetAtTime(1, t, 0.004);
+      g.setTargetAtTime(0, t + dur * 0.7, 0.04);
+    });
+  }
+  function patPump() {
+    const dur = 15 / state.bpm; // 16th notes
+    while (pat.next < ctx.currentTime + 0.12) {
+      patSchedule(pat.step, pat.next, dur);
+      pat.log.push({ s: pat.step, t: pat.next }); if (pat.log.length > 24) pat.log.shift();
+      pat.step = (pat.step + 1) % state.patLen; pat.next += dur;
+    }
+  }
+  function patStop() {
+    clearInterval(pat.timer); pat.timer = null; pat.log = [];
+    if (!ctx) return;
+    nodes.forEach(n => { n.gate.gain.cancelScheduledValues(ctx.currentTime); n.gate.gain.setTargetAtTime(0, ctx.currentTime, 0.03); });
+    state.layers.forEach(l => { l.pm = 1; }); syncAll();
+  }
+  const curStep = () => {
+    if (!ctx || !state.playing || state.mode !== 'pattern') return -1;
+    let c = -1; pat.log.forEach(e => { if (e.t <= ctx.currentTime) c = e.s; }); return c;
+  };
 
   // ---------- sequencer ----------
   let seqTimer = null;
@@ -247,6 +294,8 @@
   }
   function restartSeq() {
     clearInterval(seqTimer); seqTimer = null;
+    patStop();
+    if (state.playing && state.mode === 'pattern') { pat.step = 0; pat.next = ctx.currentTime + 0.06; pat.timer = setInterval(patPump, 25); patPump(); }
     if (state.playing && state.mode === 'seq') {
       state.seqIdx = Math.max(0, state.layers.filter(l => !l.mute).findIndex(l => l.id === state.sel));
       seqTick();
@@ -329,13 +378,83 @@
     $('play').onclick = togglePlay;
     document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
       $('editor').dataset.tab = b.dataset.tab;
+      if (b.dataset.tab === 'seq' && state.mode !== 'pattern') setMode('pattern');
       document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
     });
-    document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => {
-      state.mode = b.dataset.mode;
-      document.querySelectorAll('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
-      restartSeq();
+    document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+    $('scaleBtn').onclick = () => { state.scale = (state.scale + 1) % SCALES.length; refreshSeqBar(); };
+    $('lenBtn').onclick = () => { state.patLen = state.patLen === 16 ? 8 : 16; refreshSeqBar(); if (state.playing && state.mode === 'pattern') restartSeq(); };
+    $('clr').onclick = () => { const l = cur(); l.pat.fill(null); };
+    $('rand').onclick = () => {
+      const l = cur(); let row = 0;
+      for (let i = 0; i < 16; i++) {
+        row = Math.max(0, Math.min(ROWS - 1, row + Math.round((Math.random() - 0.5) * 4)));
+        l.pat[i] = Math.random() < 0.6 ? row : null;
+      }
+      auditionRow(l, l.pat.find(r => r != null) ?? 0);
+    };
+    initGrid();
+  }
+  function setMode(m) {
+    state.mode = m;
+    document.querySelectorAll('#modeSeg button').forEach(x => x.classList.toggle('on', x.dataset.mode === m));
+    restartSeq();
+  }
+  function refreshSeqBar() {
+    $('scaleBtn').textContent = SCALES[state.scale][0];
+    $('lenBtn').textContent = state.patLen + ' steps';
+  }
+  let rowTimer = null;
+  function auditionRow(l, row) {
+    if (!ctx || state.playing) return;
+    l.pm = stepMul(row); syncNodes(l); blip(l.id);
+    clearTimeout(rowTimer);
+    rowTimer = setTimeout(() => { if (!state.playing) { state.layers.forEach(x => x.pm = 1); syncAll(); } }, 480);
+  }
+  // piano-roll grid: tap a cell to place/remove a note, drag to paint across steps
+  function initGrid() {
+    const cvg = $('grid'); let mode = null;
+    const hit = e => {
+      const r = cvg.getBoundingClientRect();
+      const col = Math.min(state.patLen - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * state.patLen)));
+      const row = ROWS - 1 - Math.min(ROWS - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * ROWS)));
+      return [col, row];
+    };
+    const apply = e => {
+      const l = cur(), [col, row] = hit(e);
+      if (mode === 'erase') { l.pat[col] = null; return; }
+      if (l.pat[col] !== row) { l.pat[col] = row; auditionRow(l, row); }
+    };
+    cvg.addEventListener('pointerdown', e => {
+      cvg.setPointerCapture(e.pointerId);
+      const [col, row] = hit(e);
+      mode = cur().pat[col] === row ? 'erase' : 'paint';
+      apply(e);
     });
+    cvg.addEventListener('pointermove', e => { if (mode) apply(e); });
+    ['pointerup', 'pointercancel'].forEach(ev => cvg.addEventListener(ev, () => { mode = null; renderChips(); }));
+  }
+  function drawGrid() {
+    if ($('editor').dataset.tab !== 'seq') return;
+    const cvg = $('grid'), r = cvg.getBoundingClientRect();
+    if (!r.width) return;
+    if (cvg.width !== Math.round(r.width * dpr) || cvg.height !== Math.round(r.height * dpr)) { cvg.width = Math.round(r.width * dpr); cvg.height = Math.round(r.height * dpr); }
+    const c = cvg.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = r.width, h = r.height, cols = state.patLen, cw = w / cols, ch = h / ROWS, l = cur();
+    c.clearRect(0, 0, w, h);
+    for (let y = 0; y < ROWS; y++) { c.fillStyle = y % 2 ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.05)'; c.fillRect(0, y * ch, w, ch); }
+    for (let x = 0; x < cols; x++) {
+      if (x % 4 === 0) { c.fillStyle = 'rgba(255,255,255,0.07)'; c.fillRect(x * cw, 0, 1, h); }
+    }
+    const ph = curStep();
+    if (ph >= 0) { c.fillStyle = hexA(l.color, 0.16); c.fillRect(ph * cw, 0, cw, h); }
+    c.shadowColor = l.color; c.shadowBlur = 8;
+    for (let x = 0; x < cols; x++) {
+      const row = l.pat[x]; if (row == null) continue;
+      c.fillStyle = x === ph ? '#fff' : l.color;
+      c.beginPath(); c.roundRect(x * cw + 2, (ROWS - 1 - row) * ch + 2, cw - 4, ch - 4, 4); c.fill();
+    }
+    c.shadowBlur = 0;
   }
   function edit(fn) {
     const l = cur(); if (!l) return;
@@ -344,7 +463,7 @@
   function select(id) { state.sel = id; refresh(); blip(id); }
   function addLayer(_, from) {
     const l = from
-      ? newLayer({ note: from.note, oct: from.oct, n: from.n, d: from.d, wave: from.wave, vol: from.vol, phase: from.phase + 0.5, morph: from.morph, mn: from.mn, md: from.md, rate: from.rate, depth: from.depth })
+      ? newLayer({ note: from.note, oct: from.oct, n: from.n, d: from.d, wave: from.wave, vol: from.vol, phase: from.phase + 0.5, pat: from.pat.slice(), morph: from.morph, mn: from.mn, md: from.md, rate: from.rate, depth: from.depth })
       : newLayer({ note: [0, 4, 7, 9, 2, 5, 11][state.layers.length % 7], n: RATIOS[(state.layers.length * 3) % RATIOS.length][0], d: RATIOS[(state.layers.length * 3) % RATIOS.length][1] });
     state.layers.push(l); buildNodes(l); syncAll(); select(l.id); applyGates();
   }
@@ -496,6 +615,7 @@
       g.shadowBlur = 0;
     });
     g.globalCompositeOperation = 'source-over';
+    drawGrid();
     requestAnimationFrame(frame);
   }
 
@@ -503,6 +623,9 @@
   buildStaticControls();
   const first = newLayer(); state.layers.push(first); state.sel = first.id;
   addLayer(); select(first.id);
+  state.layers[0].pat = [0, null, 2, null, 4, null, 2, 4, 5, null, 4, null, 2, null, 1, null];
+  state.layers[1].pat = [4, null, null, null, 2, null, null, null, 3, null, null, null, 1, null, null, null];
+  refreshSeqBar();
   resize(); refresh();
   requestAnimationFrame(frame);
 })();
