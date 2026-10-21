@@ -97,11 +97,71 @@
   #editor[data-tab=seq] [data-t=seq] { display: flex; }
   #seqbar button { flex: 1; padding: 6px 4px; }
   #grid { position: static; width: 100%; height: 140px; touch-action: none; border-radius: 10px; background: #0d0d11; }
+
+  /* Laser sound lab */
+  #siteTabs { display:flex; gap:8px; padding:8px 16px; background:var(--bg); }
+  #siteTabs button { flex:1; min-height:40px; }
+  #laserLab { display:none; flex:1; min-height:0; overflow:auto; padding:16px; background:var(--bg); }
+  body.tool-mode #ratioLabel, body.tool-mode #stage, body.tool-mode #layers, body.tool-mode #tabs,
+  body.tool-mode #editor, body.tool-mode #transport { display:none !important; }
+  body.tool-mode #laserLab { display:block; }
+  body.tool-mode { overflow:auto; height:auto; min-height:100dvh; }
+  #laserLab .lab-head { margin:8px 0 16px; }
+  #laserLab h2 { margin:0 0 5px; font-size:22px; letter-spacing:.04em; color:var(--accent); }
+  #laserLab p { color:var(--dim); margin:0; line-height:1.5; }
+  #laserLab .lab-card { border:1px solid var(--line); border-radius:14px; padding:14px; background:var(--panel); margin:12px 0; }
+  #laserLab .lab-control { display:grid; grid-template-columns:90px 1fr 54px; gap:8px; align-items:center; margin:12px 0; }
+  #laserLab .lab-control label { font-size:12px; color:var(--dim); }
+  #laserLab input[type=range] { width:100%; min-width:0; accent-color:var(--accent); }
+  #laserLab select, #laserLab input[type=text] { background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; width:100%; }
+  #laserLab .lab-control output { text-align:right; color:var(--accent); font-variant-numeric:tabular-nums; font-size:12px; }
+  #laserLab .lab-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  #laserLab .lab-actions { display:flex; gap:8px; margin-top:12px; }
+  #laserLab .lab-actions button { flex:1; min-height:46px; }
+  #laserLab #laserPlay { background:var(--accent); color:#1a0e05; border-color:var(--accent); font-weight:700; }
+  #laserLab #laserExport { border-color:var(--accent); color:var(--accent); }
+  #laserWave { display:block; width:100%; height:100px; background:#0b0b10; border:1px solid var(--line); border-radius:10px; }
+  #laserStatus { min-height:20px; font-size:12px; color:var(--dim); margin-top:10px; }
+  @media (max-width:390px) { #laserLab .lab-control { grid-template-columns:76px 1fr 48px; } #laserLab .lab-grid { grid-template-columns:1fr; } }
+
 </style>
 </head>
 <body>
   <header><h1>SynthWave</h1><div class="seg" id="modeSeg">
     <button data-mode="stack" class="on">Stack</button><button data-mode="seq">Cycle</button><button data-mode="pattern">Pattern</button></div></header>
+
+  <nav id="siteTabs" aria-label="SynthWave tools">
+    <button id="synthTab" class="on">Synth</button>
+    <button id="laserTab">Laser Lab</button>
+  </nav>
+  <section id="laserLab" aria-label="Laser sound effect maker">
+    <div class="lab-head"><h2>LASER LAB <span style="font-size:11px;color:var(--dim);letter-spacing:.12em">/ SFX GENERATOR</span></h2>
+      <p>Design sci-fi shots, blasters and energy pulses. Preview instantly, then export an MP3.</p></div>
+    <canvas id="laserWave" width="700" height="100" aria-label="Laser waveform preview"></canvas>
+    <div class="lab-card">
+      <div class="lab-control"><label for="laserType">Style</label><select id="laserType">
+        <option value="classic">Classic arcade</option><option value="blaster">Heavy blaster</option><option value="pew">Short pew</option>
+        <option value="plasma">Plasma bolt</option><option value="charge">Charged shot</option><option value="alien">Alien zap</option><option value="retro">Retro raygun</option>
+      </select><span></span></div>
+      <div class="lab-control"><label for="laserLength">Length</label><input id="laserLength" type="range" min="0.08" max="3" step="0.01" value="0.45"><output id="laserLengthV">0.45s</output></div>
+      <div class="lab-control"><label for="laserPitch">Pitch</label><input id="laserPitch" type="range" min="80" max="1800" step="1" value="850"><output id="laserPitchV">850 Hz</output></div>
+      <div class="lab-control"><label for="laserSweep">Pitch sweep</label><input id="laserSweep" type="range" min="-100" max="100" value="-65"><output id="laserSweepV">-65%</output></div>
+      <div class="lab-control"><label for="laserPower">Power</label><input id="laserPower" type="range" min="0.1" max="1" step="0.01" value="0.75"><output id="laserPowerV">75%</output></div>
+    </div>
+    <div class="lab-card">
+      <div class="lab-grid">
+        <div class="lab-control"><label for="laserDist">Distortion</label><input id="laserDist" type="range" min="0" max="100" value="25"><output id="laserDistV">25%</output></div>
+        <div class="lab-control"><label for="laserNoise">Noise</label><input id="laserNoise" type="range" min="0" max="100" value="18"><output id="laserNoiseV">18%</output></div>
+        <div class="lab-control"><label for="laserEcho">Echo</label><input id="laserEcho" type="range" min="0" max="100" value="12"><output id="laserEchoV">12%</output></div>
+        <div class="lab-control"><label for="laserTail">Tail</label><input id="laserTail" type="range" min="0" max="100" value="35"><output id="laserTailV">35%</output></div>
+      </div>
+      <div class="lab-control"><label for="laserVar">Variation</label><input id="laserVar" type="range" min="0" max="100" value="35"><output id="laserVarV">35%</output></div>
+      <div class="lab-actions"><button id="laserPlay">▶ Preview shot</button><button id="laserRandom">↻ Randomize</button></div>
+      <div class="lab-actions"><button id="laserExport">↓ Export MP3</button></div>
+      <div id="laserStatus" role="status">Ready. MP3 export is rendered locally in your browser.</div>
+    </div>
+  </section>
+
   <div id="ratioLabel"><small>A RATIO OF</small><b id="ratioText">3 : 2</b></div>
 
   <div id="stage"><canvas id="cv"></canvas><div class="swipehint">swipe to move between layers</div></div>
@@ -630,5 +690,85 @@
   requestAnimationFrame(frame);
 })();
 </script>
+
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const ids = ['laserLength','laserPitch','laserSweep','laserPower','laserDist','laserNoise','laserEcho','laserTail','laserVar'];
+  const vals = {laserLength:v=>Number(v).toFixed(2)+'s',laserPitch:v=>Math.round(v)+' Hz',laserSweep:v=>v+'%',laserPower:v=>Math.round(v*100)+'%',laserDist:v=>v+'%',laserNoise:v=>v+'%',laserEcho:v=>v+'%',laserTail:v=>v+'%',laserVar:v=>v+'%'};
+  const read = () => Object.fromEntries(ids.map(id=>[id,Number($(id).value)]).concat([['laserType',$('laserType').value]]));
+  ids.forEach(id => $(id).addEventListener('input',()=>{ $(''+id+'V').textContent=vals[id]($(id).value); drawWave(); }));
+  $('laserType').addEventListener('change',drawWave);
+  $('laserTab').onclick = () => { document.body.classList.add('tool-mode'); $('laserTab').classList.add('on'); $('synthTab').classList.remove('on'); drawWave(); };
+  $('synthTab').onclick = () => { document.body.classList.remove('tool-mode'); $('synthTab').classList.add('on'); $('laserTab').classList.remove('on'); };
+  function drawWave() {
+    const c=$('laserWave'), g=c.getContext('2d'), p=read(), w=c.width,h=c.height;
+    g.clearRect(0,0,w,h); g.strokeStyle='#26262f'; g.lineWidth=1; g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke();
+    g.strokeStyle='#ffb27a';g.lineWidth=2;g.beginPath();
+    for(let x=0;x<w;x++){let t=x/w, env=Math.pow(1-t,1+ p.laserTail/35), sweep=p.laserPitch*Math.pow(2,(p.laserSweep/100)*t*2), ph=2*Math.PI*(sweep/100)*t*45;let y=h/2+Math.sin(ph)*env*38*(0.7+0.3*Math.sin(t*110)); if(x===0)g.moveTo(x,y);else g.lineTo(x,y);}g.stroke();
+  }
+  function settings() {
+    const p=read(), v=p.laserVar/100;
+    p.seedPitch=p.laserPitch*(1+(Math.random()*2-1)*v*.22);
+    p.seedSweep=p.laserSweep+(Math.random()*2-1)*v*30;
+    p.seedNoise=p.laserNoise+(Math.random()*2-1)*v*25;
+    p.seedDist=p.laserDist+(Math.random()*2-1)*v*20;
+    return p;
+  }
+  async function render(p) {
+    const sr=44100, duration=p.laserLength*(1+p.laserEcho/100*.45)+.08, frames=Math.ceil(sr*duration);
+    const off=new OfflineAudioContext(1,frames,sr), master=off.createGain(); master.gain.value=p.laserPower*.7; master.connect(off.destination);
+    const osc=off.createOscillator(), gain=off.createGain(), shaper=off.createWaveShaper();
+    const curve=new Float32Array(65536), amount=p.seedDist/100;
+    for(let i=0;i<curve.length;i++){let x=i*2/(curve.length-1)-1;curve[i]=(1+amount*8)*x/(1+amount*8*Math.abs(x));}
+    shaper.curve=curve; shaper.oversample='4x';
+    const start=0, end=p.laserLength, f0=p.seedPitch, f1=Math.max(35,f0*Math.pow(2,p.seedSweep/100*3));
+    osc.type=p.laserType==='retro'?'square':p.laserType==='plasma'?'sawtooth':p.laserType==='alien'?'triangle':'sawtooth';
+    osc.frequency.setValueAtTime(f0,start);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(35,f1),Math.max(.02,end));
+    if(p.laserType==='charge'){osc.frequency.setValueAtTime(f0*.45,0);osc.frequency.exponentialRampToValueAtTime(f0,end);}
+    if(p.laserType==='pew'){osc.frequency.exponentialRampToValueAtTime(Math.max(35,f0*.22),end*.8);}
+    gain.gain.setValueAtTime(.0001,0);gain.gain.linearRampToValueAtTime(1,.008);gain.gain.exponentialRampToValueAtTime(.0001,end);
+    osc.connect(gain);gain.connect(shaper);shaper.connect(master);osc.start();osc.stop(end+.01);
+    if(p.seedNoise>0){
+      const nbuf=off.createBuffer(1,Math.ceil(sr*end),sr), data=nbuf.getChannelData(0);
+      for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1);
+      const noise=off.createBufferSource(), ng=off.createGain(), nf=off.createBiquadFilter();
+      noise.buffer=nbuf;nf.type='highpass';nf.frequency.value=p.laserType==='heavy'?250:650;
+      ng.gain.setValueAtTime(.0001,0);ng.gain.linearRampToValueAtTime(p.seedNoise/180,.005);ng.gain.exponentialRampToValueAtTime(.0001,end);
+      noise.connect(nf);nf.connect(ng);ng.connect(master);noise.start();noise.stop(end);
+    }
+    if(p.laserEcho>0){const delay=off.createDelay(.5), eg=off.createGain();delay.delayTime.value=.075;eg.gain.value=p.laserEcho/180;master.connect(delay);delay.connect(eg);eg.connect(master);}
+    const rendered=await off.startRendering();
+    const data=rendered.getChannelData(0);let peak=0;for(let i=0;i<data.length;i++)peak=Math.max(peak,Math.abs(data[i]));
+    if(peak>.95){const scale=.95/peak;for(let i=0;i<data.length;i++)data[i]*=scale;}
+    return {data,sr};
+  }
+  async function preview(){
+    $('laserStatus').textContent='Rendering preview…';
+    try{const p=settings(),r=await render(p);const ctx=new (window.AudioContext||window.webkitAudioContext)();const b=ctx.createBuffer(1,r.data.length,r.sr);b.copyToChannel(r.data,0);const s=ctx.createBufferSource();s.buffer=b;s.connect(ctx.destination);s.onended=()=>ctx.close();await ctx.resume();s.start();$('laserStatus').textContent='Playing preview · tweak controls and preview again.';}
+    catch(e){$('laserStatus').textContent='Could not render audio: '+e.message;}
+  }
+  $('laserPlay').onclick=preview;
+  $('laserRandom').onclick=()=>{ $('laserType').selectedIndex=Math.floor(Math.random()*$('laserType').options.length); const ranges={laserLength:[.08,1.5],laserPitch:[150,1500],laserSweep:[-100,100],laserPower:[.35,1],laserDist:[0,85],laserNoise:[0,75],laserEcho:[0,55],laserTail:[5,90],laserVar:[10,80]};Object.entries(ranges).forEach(([id,[a,b]])=>{$(id).value=Math.round((a+Math.random()*(b-a))*100)/100;$(id).dispatchEvent(new Event('input'));});drawWave();};
+  $('laserExport').onclick=async()=>{
+    const btn=$('laserExport');btn.disabled=true;$('laserStatus').textContent='Rendering MP3…';
+    try{
+      const p=settings(),r=await render(p);
+      if(!window.lamejs)throw new Error('MP3 encoder did not load. Check your connection and try again.');
+      const enc=new lamejs.Mp3Encoder(1,r.sr,192), chunk=1152, out=[];
+      for(let i=0;i<r.data.length;i+=chunk){const slice=r.data.subarray(i,Math.min(i+chunk,r.data.length)), pcm=new Int16Array(slice.length);for(let j=0;j<slice.length;j++)pcm[j]=Math.max(-32768,Math.min(32767,slice[j]*32767));const buf=enc.encodeBuffer(pcm);if(buf.length)out.push(new Uint8Array(buf));}
+      const end=enc.flush();if(end.length)out.push(new Uint8Array(end));
+      const blob=new Blob(out,{type:'audio/mpeg'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download='synthwave-laser-'+p.laserType+'-'+Date.now()+'.mp3';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+      $('laserStatus').textContent='MP3 exported · '+(blob.size/1024).toFixed(0)+' KB · 192 kbps.';
+    }catch(e){$('laserStatus').textContent='Export failed: '+e.message;}
+    finally{btn.disabled=false;}
+  };
+  drawWave();
+})();
+</script>
+
 </body>
 </html>
