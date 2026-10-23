@@ -148,6 +148,24 @@
     #laserLab .lab-actions button { font-size:13px; padding:10px 8px; }
   }
 
+
+/* Three.js paste-and-preview tool */
+#alienViewer{display:none;flex:1;min-height:0;overflow:auto;padding:12px;background:var(--bg)}
+body.viewer-mode{overflow:auto;height:auto;min-height:100dvh}
+body.viewer-mode #ratioLabel,body.viewer-mode #stage,body.viewer-mode #layers,body.viewer-mode #tabs,body.viewer-mode #editor,body.viewer-mode #transport,body.viewer-mode #laserLab{display:none!important}
+body.viewer-mode #alienViewer{display:block}
+#alienViewer,#alienViewer *{box-sizing:border-box}
+#alienViewer h2{color:var(--accent);margin:4px 0 6px;font-size:21px}
+#alienViewer p{color:var(--dim);margin:0 0 12px;line-height:1.5}
+#alienViewer textarea{width:100%;min-height:210px;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:12px;background:#0c0c12;color:#e8e6ef;font:12px/1.5 ui-monospace,monospace}
+#alienViewer .viewer-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+#alienViewer .viewer-actions button{min-height:44px;flex:1}
+#alienViewer #runAlien{background:var(--accent);color:#1a0e05;font-weight:700}
+#alienViewer .viewer-stage{height:min(48vh,460px);min-height:240px;position:relative;overflow:hidden;background:#05060c;border:1px solid var(--line);border-radius:12px;touch-action:none}
+#alienViewer iframe{display:block;width:100%;height:100%;border:0}
+#alienStatus{font-size:12px;color:var(--dim);min-height:20px;margin:8px 0;overflow-wrap:anywhere}
+@media(max-width:480px){#alienViewer{padding:10px}#alienViewer .viewer-stage{height:40vh;min-height:220px}#alienViewer textarea{min-height:175px}}
+
 </style>
 </head>
 <body>
@@ -157,6 +175,7 @@
   <nav id="siteTabs" aria-label="SynthWave tools">
     <button id="synthTab" class="on">Synth</button>
     <button id="laserTab">Laser Lab</button>
+    <button id="alienTab">3D Viewer</button>
   </nav>
   <section id="laserLab" aria-label="Laser sound effect maker">
     <div class="lab-head"><h2>LASER LAB <span style="font-size:11px;color:var(--dim);letter-spacing:.12em">/ SFX GENERATOR</span></h2>
@@ -186,6 +205,15 @@
     </div>
   </section>
 
+
+<section id="alienViewer" aria-label="Three.js code viewer">
+<h2>3D CODE VIEWER</h2>
+<p>Paste Three.js scene code, press Run, then drag to rotate and pinch/scroll to zoom. Reset restores the starting camera.</p>
+<textarea id="alienCode" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Paste Three.js code here"></textarea>
+<div class="viewer-actions"><button id="runAlien">▶ Run code</button><button id="resetAlien">↺ Reset view</button><button id="clearAlien">Clear code</button></div>
+<div id="alienStatus" role="status">Ready. Paste code and run it in the isolated preview.</div>
+<div class="viewer-stage"><iframe id="alienFrame" title="Three.js live 3D preview" sandbox="allow-scripts allow-same-origin"></iframe></div>
+</section>
   <div id="ratioLabel"><small>A RATIO OF</small><b id="ratioText">3 : 2</b></div>
 
   <div id="stage"><canvas id="cv"></canvas><div class="swipehint">swipe to move between layers</div></div>
@@ -794,5 +822,68 @@
 })();
 </script>
 
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+$('alienCode').value = \`// Example alien. Paste your own Three.js scene code here.
+// Available variables: THREE, scene, camera, renderer, controls, onFrame.
+const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.8,2),
+ new THREE.MeshStandardMaterial({color:0x477d78,roughness:0.55}));
+scene.add(body);
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.48,24,18),
+ new THREE.MeshStandardMaterial({color:0x7bb6a7,roughness:0.4}));
+head.scale.set(0.8,1.25,0.8); head.position.y=1.05; scene.add(head);
+for(const x of [-0.2,0.2]){
+ const eye=new THREE.Mesh(new THREE.SphereGeometry(0.09,16,12),
+ new THREE.MeshStandardMaterial({color:0x9fffee,emissive:0x36ffe0,emissiveIntensity:2}));
+ eye.position.set(x,1.12,0.36); scene.add(eye);
+}
+for(const x of [-0.28,0.28]){
+ const leg=new THREE.Mesh(new THREE.CapsuleGeometry(0.12,0.65,4,8),
+ new THREE.MeshStandardMaterial({color:0x345b59}));
+ leg.position.set(x,-0.68,0); scene.add(leg);
+}\`;
+function run(){
+const userCode=$('alienCode').value;
+const doc = \`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05060c}canvas{display:block;width:100%;height:100%;touch-action:none}</style></head><body><script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x05060c);
+scene.fog=new THREE.Fog(0x05060c,12,35);
+const camera=new THREE.PerspectiveCamera(45,1,0.1,1000);
+const startPosition=new THREE.Vector3(4,3,6);camera.position.copy(startPosition);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;document.body.appendChild(renderer.domElement);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;
+controls.target.set(0,.2,0);controls.minDistance=1;controls.maxDistance=80;
+scene.add(new THREE.HemisphereLight(0xb9d9ff,0x242030,2));
+const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(4,8,6);scene.add(key);
+const rim=new THREE.PointLight(0x39d9ff,30,20);rim.position.set(-4,2,-3);scene.add(rim);
+const fill=new THREE.PointLight(0xff7fbd,16,16);fill.position.set(3,-1,4);scene.add(fill);
+const grid=new THREE.GridHelper(30,30,0x344055,0x171d2a);grid.position.y=-1.5;scene.add(grid);
+const callbacks=[];const onFrame=fn=>callbacks.push(fn);
+try{
+${userCode}
+parent.postMessage({type:'viewer-status',ok:true,message:'Code ran successfully. Drag to rotate; pinch or scroll to zoom.'},'*');
+}catch(e){parent.postMessage({type:'viewer-status',ok:false,message:e.name+': '+e.message},'*');}
+function resize(){camera.aspect=innerWidth/Math.max(innerHeight,1);camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)}
+addEventListener('resize',resize);
+function frame(t){requestAnimationFrame(frame);controls.update();for(const fn of callbacks){try{fn(t*.001)}catch(e){}}renderer.render(scene,camera)}requestAnimationFrame(frame);
+addEventListener('message',e=>{if(e.data==='reset-camera'){camera.position.copy(startPosition);controls.target.set(0,.2,0);controls.update()}});
+<\/script></body></html>\`;
+$('alienStatus').textContent='Running code…';
+$('alienFrame').srcdoc=doc.replace('USER_CODE_PLACEHOLDER',userCode);
+}
+$('runAlien').onclick=run;
+$('resetAlien').onclick=()=>{if($('alienFrame').contentWindow)$('alienFrame').contentWindow.postMessage('reset-camera','*');$('alienStatus').textContent='Camera reset.'};
+$('clearAlien').onclick=()=>{$('alienCode').value='';$('alienStatus').textContent='Code cleared. Paste code and press Run.'};
+$('synthTab').addEventListener('click',()=>{document.body.classList.remove('viewer-mode');document.body.classList.remove('tool-mode');$('alienTab').classList.remove('on')});
+$('laserTab').addEventListener('click',()=>{document.body.classList.remove('viewer-mode');$('alienTab').classList.remove('on')});
+$('alienTab').addEventListener('click',()=>{document.body.classList.remove('tool-mode');document.body.classList.add('viewer-mode');$('alienTab').classList.add('on');$('synthTab').classList.remove('on');$('laserTab').classList.remove('on');if(!$('alienFrame').srcdoc)run()});
+addEventListener('message',e=>{if(e.source!==$('alienFrame').contentWindow||!e.data||e.data.type!=='viewer-status')return;$('alienStatus').textContent=e.data.message;$('alienStatus').style.color=e.data.ok?'var(--dim)':'#ff7d7d'});
+})();
+<\/script>
 </body>
 </html>
