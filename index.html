@@ -164,6 +164,8 @@ body.viewer-mode #alienViewer{display:block}
 #alienViewer .viewer-stage{height:min(48vh,460px);min-height:240px;position:relative;overflow:hidden;background:#05060c;border:1px solid var(--line);border-radius:12px;touch-action:none}
 #alienViewer iframe{display:block;width:100%;height:100%;border:0}
 #alienStatus{font-size:12px;color:var(--dim);min-height:20px;margin:8px 0;overflow-wrap:anywhere}
+.viewer-upload{display:grid;gap:7px;margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025)}
+.viewer-upload label{font-weight:650;font-size:13px}.viewer-upload input{max-width:100%;font-size:13px}.viewer-upload small{color:var(--dim);font-size:11px}
 @media(max-width:480px){#alienViewer{padding:10px}#alienViewer .viewer-stage{height:40vh;min-height:220px}#alienViewer textarea{min-height:175px}}
 
 </style>
@@ -211,6 +213,7 @@ body.viewer-mode #alienViewer{display:block}
 <p>Paste Three.js scene code, press Run, then drag to rotate and pinch/scroll to zoom. Reset restores the starting camera.</p>
 <textarea id="alienCode" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Paste Three.js code here"></textarea>
 <div class="viewer-actions"><button id="runAlien">▶ Run code</button><button id="resetAlien">↺ Reset view</button><button id="clearAlien">Clear code</button></div>
+<div class="viewer-upload"><label for="glbUpload">Upload 3D model (.glb)</label><input id="glbUpload" type="file" accept=".glb,model/gltf-binary"><small>Choose a .glb file from your device. It loads into the preview below.</small></div>
 <div id="alienStatus" role="status">Ready. Paste code and run it in the isolated preview.</div>
 <div class="viewer-stage"><iframe id="alienFrame" title="Three.js live 3D preview" sandbox="allow-scripts allow-same-origin"></iframe></div>
 </section>
@@ -849,6 +852,7 @@ const userCode=$('alienCode').value;
 const doc = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05060c}canvas{display:block;width:100%;height:100%;touch-action:none}</style></head><body><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}<\/script><script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x05060c);
 scene.fog=new THREE.Fog(0x05060c,12,35);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,1000);
@@ -863,7 +867,7 @@ const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(4,8,6);scene.a
 const rim=new THREE.PointLight(0x39d9ff,30,20);rim.position.set(-4,2,-3);scene.add(rim);
 const fill=new THREE.PointLight(0xff7fbd,16,16);fill.position.set(3,-1,4);scene.add(fill);
 const grid=new THREE.GridHelper(30,30,0x344055,0x171d2a);grid.position.y=-1.5;scene.add(grid);
-const callbacks=[];const onFrame=fn=>callbacks.push(fn);
+const callbacks=[];const onFrame=fn=>callbacks.push(fn);\nconst glbLoader=new GLTFLoader();let uploadedModel=null;\naddEventListener('message',e=>{if(!e.data||e.data.type!=='load-glb'||!e.data.buffer)return;try{glbLoader.parse(e.data.buffer,'',gltf=>{if(uploadedModel)scene.remove(uploadedModel);uploadedModel=gltf.scene;scene.add(uploadedModel);const box=new THREE.Box3().setFromObject(uploadedModel);const size=box.getSize(new THREE.Vector3());const center=box.getCenter(new THREE.Vector3());uploadedModel.position.sub(center);const maxDim=Math.max(size.x,size.y,size.z)||1;camera.position.set(maxDim*1.5,maxDim*1.0,maxDim*2.2);controls.target.set(0,0,0);controls.minDistance=maxDim*.15;controls.maxDistance=maxDim*20;controls.update();parent.postMessage({type:'viewer-status',ok:true,message:'GLB loaded successfully. Drag to rotate; pinch or scroll to zoom.'},'*');},err=>parent.postMessage({type:'viewer-status',ok:false,message:'Could not load GLB: '+(err?.message||err)},'*'));}catch(err){parent.postMessage({type:'viewer-status',ok:false,message:'Could not load GLB: '+err.message},'*')}});
 try{
 ${userCode}
 parent.postMessage({type:'viewer-status',ok:true,message:'Code ran successfully. Drag to rotate; pinch or scroll to zoom.'},'*');
@@ -876,7 +880,7 @@ addEventListener('message',e=>{if(e.data==='reset-camera'){camera.position.copy(
 $('alienStatus').textContent='Running code…';
 $('alienFrame').srcdoc=doc.replace('USER_CODE_PLACEHOLDER',userCode);
 }
-$('runAlien').onclick=run;
+$('glbUpload').addEventListener('change',async e=>{const file=e.target.files&&e.target.files[0];if(!file)return;if(!file.name.toLowerCase().endsWith('.glb')){$('alienStatus').textContent='Please choose a .glb file.';return;}try{$('alienStatus').textContent='Loading '+file.name+'…';if(!$('alienFrame').srcdoc)run();const buffer=await file.arrayBuffer();const send=()=>{if($('alienFrame').contentWindow){$('alienFrame').contentWindow.postMessage({type:'load-glb',buffer},'*',[buffer]);}};if(!$('alienFrame').srcdoc){run();setTimeout(send,500);}else send();}catch(err){$('alienStatus').textContent='Upload failed: '+err.message;}});\n$('runAlien').onclick=run;
 $('resetAlien').onclick=()=>{if($('alienFrame').contentWindow)$('alienFrame').contentWindow.postMessage('reset-camera','*');$('alienStatus').textContent='Camera reset.'};
 $('clearAlien').onclick=()=>{$('alienCode').value='';$('alienStatus').textContent='Code cleared. Paste code and press Run.'};
 $('synthTab').addEventListener('click',()=>{document.body.classList.remove('viewer-mode');document.body.classList.remove('tool-mode');$('alienTab').classList.remove('on')});
