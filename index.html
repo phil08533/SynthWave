@@ -884,6 +884,6 @@ $('laserTab').addEventListener('click',()=>{document.body.classList.remove('view
 $('alienTab').addEventListener('click',()=>{document.body.classList.remove('tool-mode');document.body.classList.add('viewer-mode');$('alienTab').classList.add('on');$('synthTab').classList.remove('on');$('laserTab').classList.remove('on');if(!$('alienFrame').srcdoc)run()});
 addEventListener('message',e=>{if(e.source!==$('alienFrame').contentWindow||!e.data||e.data.type!=='viewer-status')return;$('alienStatus').textContent=e.data.message;$('alienStatus').style.color=e.data.ok?'var(--dim)':'#ff7d7d'});
 })();
-<\/script>
+</script>
 </body>
 </html>
