@@ -826,7 +826,7 @@ body.viewer-mode #alienViewer{display:block}
 <script>
 (()=>{
 const $=id=>document.getElementById(id);
-$('alienCode').value = \`// Example alien. Paste your own Three.js scene code here.
+$('alienCode').value = `// Example alien. Paste your own Three.js scene code here.
 // Available variables: THREE, scene, camera, renderer, controls, onFrame.
 const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.8,2),
  new THREE.MeshStandardMaterial({color:0x477d78,roughness:0.55}));
@@ -843,10 +843,10 @@ for(const x of [-0.28,0.28]){
  const leg=new THREE.Mesh(new THREE.CapsuleGeometry(0.12,0.65,4,8),
  new THREE.MeshStandardMaterial({color:0x345b59}));
  leg.position.set(x,-0.68,0); scene.add(leg);
-}\`;
+}`;
 function run(){
 const userCode=$('alienCode').value;
-const doc = \`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05060c}canvas{display:block;width:100%;height:100%;touch-action:none}</style></head><body><script type="module">
+const doc = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05060c}canvas{display:block;width:100%;height:100%;touch-action:none}</style></head><body><script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x05060c);
@@ -872,7 +872,7 @@ function resize(){camera.aspect=innerWidth/Math.max(innerHeight,1);camera.update
 addEventListener('resize',resize);
 function frame(t){requestAnimationFrame(frame);controls.update();for(const fn of callbacks){try{fn(t*.001)}catch(e){}}renderer.render(scene,camera)}requestAnimationFrame(frame);
 addEventListener('message',e=>{if(e.data==='reset-camera'){camera.position.copy(startPosition);controls.target.set(0,.2,0);controls.update()}});
-<\/script></body></html>\`;
+<\/script></body></html>`;
 $('alienStatus').textContent='Running code…';
 $('alienFrame').srcdoc=doc.replace('USER_CODE_PLACEHOLDER',userCode);
 }
